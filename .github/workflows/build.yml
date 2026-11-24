@@ -68,8 +68,8 @@ jobs:
                   applicationId 'com.zubair.calmapp'
                   minSdk 26
                   targetSdk 34
-                  versionCode 1
-                  versionName '1.0'
+                  versionCode 2
+                  versionName '2.0'
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -90,6 +90,12 @@ jobs:
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
               <uses-permission android:name="android.permission.VIBRATE" />
               <uses-permission android:name="android.permission.WAKE_LOCK" />
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.TTS_SERVICE" />
+                  </intent>
+              </queries>
               <application
                   android:label="Calm Guard"
                   android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
@@ -107,25 +113,207 @@ jobs:
           </manifest>
           EOF
 
+          cat > calm/app/src/main/java/com/zubair/calmapp/Helpers.kt <<'EOF'
+          package com.zubair.calmapp
+
+          import android.content.Context
+          import android.media.AudioAttributes
+          import android.speech.tts.TextToSpeech
+          import android.speech.tts.UtteranceProgressListener
+          import java.util.Locale
+
+          object L {
+              val codes = arrayOf("en", "ur", "hi", "ar")
+              val names = arrayOf("English", "اردو", "हिन्दी", "العربية")
+
+              private val data: Map<String, Map<String, String>> = mapOf(
+                  "en" to mapOf(
+                      "title" to "Calm Companion",
+                      "off" to "Stopped",
+                      "on" to "Running  |  Voice level: ",
+                      "thr" to "Alert level: ",
+                      "thrHint" to "(lower level = earlier reminder)",
+                      "start" to "Start",
+                      "stop" to "Stop",
+                      "vib" to "Test vibration",
+                      "voiceTest" to "Test voice",
+                      "voiceSwitch" to "Speak the reminder aloud",
+                      "overlay" to "Allow pop-up over other apps",
+                      "langLabel" to "Language",
+                      "note" to "This app does not record audio. It only measures loudness.\nAfter starting you can lock the phone and keep it in your pocket.\nIf the level stays 0 during a call, put the call on speaker and test again.",
+                      "dismiss" to "OK, I am calm - close",
+                      "alertTitle" to "Take a moment",
+                      "notifTitle" to "Calm Companion is running",
+                      "notifText" to "Only loudness is measured. Nothing is recorded.",
+                      "m1" to "Take a deep breath. Stay calm.",
+                      "m2" to "Calm down. You can handle this.",
+                      "m3" to "Lower your voice a little. It is all fine.",
+                      "m4" to "Relax. This will sort itself out gently."
+                  ),
+                  "ur" to mapOf(
+                      "title" to "پرسکون رہنے والا ساتھی",
+                      "off" to "ابھی بند ہے",
+                      "on" to "چل رہی ہے  |  آواز کی سطح: ",
+                      "thr" to "الارم کی حد: ",
+                      "thrHint" to "(حد کم ہو تو یاد دہانی جلدی آئے گی)",
+                      "start" to "شروع کریں",
+                      "stop" to "بند کریں",
+                      "vib" to "وائبریشن ٹیسٹ",
+                      "voiceTest" to "آواز ٹیسٹ",
+                      "voiceSwitch" to "یاد دہانی آواز میں بولے",
+                      "overlay" to "دوسری ایپس کے اوپر پیغام کی اجازت دیں",
+                      "langLabel" to "زبان",
+                      "note" to "یہ ایپ آواز ریکارڈ نہیں کرتی، صرف بلندی ناپتی ہے۔\nشروع کرنے کے بعد فون جیب میں رکھ سکتے ہیں۔\nاگر کال کے دوران سطح 0 رہے تو کال سپیکر پر رکھ کر آزمائیں۔",
+                      "dismiss" to "ٹھیک ہے، میں پرسکون ہوں - بند کریں",
+                      "alertTitle" to "ایک لمحہ",
+                      "notifTitle" to "پرسکون ایپ چل رہی ہے",
+                      "notifText" to "صرف آواز کی بلندی ناپی جاتی ہے، ریکارڈنگ نہیں ہوتی",
+                      "m1" to "ایک گہری سانس لیں، آرام سے",
+                      "m2" to "پرسکون رہیں، آپ سنبھال سکتے ہیں",
+                      "m3" to "آواز ذرا ہلکی کر لیں، سب ٹھیک ہے",
+                      "m4" to "ٹھنڈے رہیں، بات آرام سے ہو جائے گی"
+                  ),
+                  "hi" to mapOf(
+                      "title" to "शांत रहने वाला साथी",
+                      "off" to "अभी बंद है",
+                      "on" to "चालू है  |  आवाज़ का स्तर: ",
+                      "thr" to "अलर्ट की सीमा: ",
+                      "thrHint" to "(सीमा कम हो तो याद दिलाना जल्दी आएगा)",
+                      "start" to "शुरू करें",
+                      "stop" to "बंद करें",
+                      "vib" to "वाइब्रेशन टेस्ट",
+                      "voiceTest" to "आवाज़ टेस्ट",
+                      "voiceSwitch" to "याद दिलाना बोलकर सुनाए",
+                      "overlay" to "दूसरे ऐप्स के ऊपर संदेश की अनुमति दें",
+                      "langLabel" to "भाषा",
+                      "note" to "यह ऐप आवाज़ रिकॉर्ड नहीं करता, सिर्फ़ तेज़ी नापता है।\nशुरू करने के बाद फ़ोन जेब में रख सकते हैं।\nअगर कॉल के दौरान स्तर 0 रहे तो कॉल स्पीकर पर रखकर आज़माएँ।",
+                      "dismiss" to "ठीक है, मैं शांत हूँ - बंद करें",
+                      "alertTitle" to "एक पल रुकिए",
+                      "notifTitle" to "शांत साथी चल रहा है",
+                      "notifText" to "सिर्फ़ आवाज़ की तेज़ी नापी जाती है, रिकॉर्डिंग नहीं होती",
+                      "m1" to "गहरी साँस लें, शांत रहें",
+                      "m2" to "शांत हो जाइए, आप संभाल सकते हैं",
+                      "m3" to "आवाज़ थोड़ी धीमी कर लें, सब ठीक है",
+                      "m4" to "ठंडे रहिए, बात आराम से सुलझ जाएगी"
+                  ),
+                  "ar" to mapOf(
+                      "title" to "رفيق الهدوء",
+                      "off" to "متوقف",
+                      "on" to "يعمل  |  مستوى الصوت: ",
+                      "thr" to "حد التنبيه: ",
+                      "thrHint" to "(كلما قلّ الحد جاء التنبيه أبكر)",
+                      "start" to "ابدأ",
+                      "stop" to "إيقاف",
+                      "vib" to "اختبار الاهتزاز",
+                      "voiceTest" to "اختبار الصوت",
+                      "voiceSwitch" to "قراءة التذكير بصوت عالٍ",
+                      "overlay" to "السماح بالعرض فوق التطبيقات الأخرى",
+                      "langLabel" to "اللغة",
+                      "note" to "لا يسجّل هذا التطبيق الصوت، بل يقيس شدّته فقط.\nبعد البدء يمكنك قفل الهاتف ووضعه في جيبك.\nإذا بقي المستوى 0 أثناء المكالمة فضع المكالمة على مكبّر الصوت وجرّب مجددًا.",
+                      "dismiss" to "حسنًا، أنا هادئ - إغلاق",
+                      "alertTitle" to "لحظة من فضلك",
+                      "notifTitle" to "رفيق الهدوء يعمل",
+                      "notifText" to "تُقاس شدّة الصوت فقط ولا يتم التسجيل",
+                      "m1" to "خذ نفسًا عميقًا وابقَ هادئًا",
+                      "m2" to "اهدأ، أنت قادر على التحكم",
+                      "m3" to "اخفض صوتك قليلًا، كل شيء بخير",
+                      "m4" to "اهدأ، ستُحل الأمور بهدوء"
+                  )
+              )
+
+              fun get(lang: String, key: String): String {
+                  val en = data["en"]!!
+                  val m = data[lang] ?: en
+                  return m[key] ?: en[key] ?: key
+              }
+          }
+
+          object Voice {
+              private var tts: TextToSpeech? = null
+              private var ready = false
+              private var pending: Triple<String, String, String>? = null
+              @Volatile var speaking = false
+
+              fun init(ctx: Context) {
+                  if (tts != null) return
+                  tts = TextToSpeech(ctx.applicationContext) { status ->
+                      if (status == TextToSpeech.SUCCESS) {
+                          ready = true
+                          tts?.setAudioAttributes(
+                              AudioAttributes.Builder()
+                                  .setUsage(AudioAttributes.USAGE_ALARM)
+                                  .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                  .build()
+                          )
+                          tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                              override fun onStart(utteranceId: String?) { speaking = true }
+                              override fun onDone(utteranceId: String?) { speaking = false }
+                              override fun onError(utteranceId: String?) { speaking = false }
+                          })
+                          val p = pending
+                          if (p != null) {
+                              pending = null
+                              speak(p.first, p.second, p.third)
+                          }
+                      }
+                  }
+              }
+
+              fun speak(lang: String, text: String, fallbackEnglish: String) {
+                  val t = tts
+                  if (t == null || !ready) {
+                      pending = Triple(lang, text, fallbackEnglish)
+                      return
+                  }
+                  var say = text
+                  val r = t.setLanguage(Locale(lang))
+                  if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) {
+                      t.setLanguage(Locale.ENGLISH)
+                      say = fallbackEnglish
+                  }
+                  t.speak(say, TextToSpeech.QUEUE_FLUSH, null, "calm")
+              }
+
+              fun stop() {
+                  try { tts?.stop() } catch (e: Exception) {}
+                  speaking = false
+              }
+          }
+          EOF
+
           cat > calm/app/src/main/java/com/zubair/calmapp/CalmService.kt <<'EOF'
           package com.zubair.calmapp
 
           import android.app.Notification
           import android.app.NotificationChannel
           import android.app.NotificationManager
+          import android.app.PendingIntent
           import android.app.Service
           import android.content.Context
           import android.content.Intent
           import android.content.pm.ServiceInfo
+          import android.graphics.Color
+          import android.graphics.PixelFormat
+          import android.graphics.drawable.Icon
+          import android.media.AudioAttributes
           import android.media.AudioFormat
           import android.media.AudioRecord
           import android.media.MediaRecorder
           import android.os.Build
+          import android.os.Handler
           import android.os.IBinder
+          import android.os.Looper
           import android.os.PowerManager
           import android.os.SystemClock
           import android.os.VibrationEffect
           import android.os.Vibrator
+          import android.provider.Settings
+          import android.view.Gravity
+          import android.view.View
+          import android.view.WindowManager
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.TextView
 
           class CalmService : Service() {
 
@@ -137,7 +325,14 @@ jobs:
 
                   fun buzz(ctx: Context) {
                       val v = ctx.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-                      v.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 200, 150, 200), -1))
+                      val effect = VibrationEffect.createWaveform(
+                          longArrayOf(0, 700, 250, 700, 250, 700), -1
+                      )
+                      val attrs = AudioAttributes.Builder()
+                          .setUsage(AudioAttributes.USAGE_ALARM)
+                          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                          .build()
+                      v.vibrate(effect, attrs)
                   }
               }
 
@@ -145,11 +340,15 @@ jobs:
               private var worker: Thread? = null
               private var wake: PowerManager.WakeLock? = null
               private var lastAlert = 0L
+              private val main = Handler(Looper.getMainLooper())
+              private var overlay: View? = null
+              private val autoHide = Runnable { removeOverlay() }
 
               override fun onBind(intent: Intent?): IBinder? = null
 
               override fun onCreate() {
                   super.onCreate()
+                  Voice.init(this)
                   val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                   nm.createNotificationChannel(
                       NotificationChannel(CH_ONGOING, "Running", NotificationManager.IMPORTANCE_LOW)
@@ -161,9 +360,15 @@ jobs:
               }
 
               override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  if (intent?.action == "DISMISS") {
+                      dismissAll()
+                      if (!active) stopSelf()
+                      return START_NOT_STICKY
+                  }
+                  val lang = getSharedPreferences("calm", Context.MODE_PRIVATE).getString("lang", "en") ?: "en"
                   val n = Notification.Builder(this, CH_ONGOING)
-                      .setContentTitle("پرسکون ایپ چل رہی ہے")
-                      .setContentText("صرف آواز کی بلندی ناپی جاتی ہے، ریکارڈنگ نہیں ہوتی")
+                      .setContentTitle(L.get(lang, "notifTitle"))
+                      .setContentText(L.get(lang, "notifText"))
                       .setSmallIcon(android.R.drawable.ic_dialog_info)
                       .setOngoing(true)
                       .build()
@@ -223,10 +428,14 @@ jobs:
                           val db = 20 * Math.log10(maxOf(rms, 1e-6))
                           val lvl = (((db + 60) / 60.0) * 100).toInt().coerceIn(0, 100)
                           level = lvl
+                          if (Voice.speaking) {
+                              high = 0
+                              continue
+                          }
                           val thr = prefs.getInt("thr", 70)
                           if (lvl >= thr) high++ else high = 0
                           val now = SystemClock.elapsedRealtime()
-                          if (high >= 5 && now - lastAlert > 15000) {
+                          if (high >= 5 && now - lastAlert > 20000) {
                               lastAlert = now
                               high = 0
                               alert()
@@ -241,28 +450,103 @@ jobs:
               }
 
               private fun alert() {
-                  val msgs = arrayOf(
-                      "ایک گہری سانس لیں، آرام سے",
-                      "پرسکون رہیں، آپ سنبھال سکتے ہیں",
-                      "آواز ذرا ہلکی کر لیں، سب ٹھیک ہے",
-                      "ٹھنڈے رہیں، بات آرام سے ہو جائے گی"
+                  val prefs = getSharedPreferences("calm", Context.MODE_PRIVATE)
+                  val lang = prefs.getString("lang", "en") ?: "en"
+                  val key = arrayOf("m1", "m2", "m3", "m4").random()
+                  val msg = L.get(lang, key)
+
+                  val pi = PendingIntent.getService(
+                      this, 0,
+                      Intent(this, CalmService::class.java).setAction("DISMISS"),
+                      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
                   )
+                  val act = Notification.Action.Builder(
+                      Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
+                      L.get(lang, "dismiss"),
+                      pi
+                  ).build()
                   val n = Notification.Builder(this, CH_ALERT)
-                      .setContentTitle("ایک لمحہ")
-                      .setContentText(msgs.random())
+                      .setContentTitle(L.get(lang, "alertTitle"))
+                      .setContentText(msg)
+                      .setStyle(Notification.BigTextStyle().bigText(msg))
                       .setSmallIcon(android.R.drawable.ic_dialog_info)
-                      .setAutoCancel(true)
-                      .setTimeoutAfter(8000)
+                      .addAction(act)
                       .build()
                   val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                   nm.notify(2, n)
+
                   buzz(this)
+                  if (prefs.getBoolean("voice", true)) {
+                      Voice.speak(lang, msg, L.get("en", key))
+                  }
+                  showOverlay(msg, lang)
+              }
+
+              private fun showOverlay(msg: String, lang: String) {
+                  if (!Settings.canDrawOverlays(this)) return
+                  main.post {
+                      removeOverlay()
+                      val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                      val pad = (20 * resources.displayMetrics.density).toInt()
+                      val box = LinearLayout(this)
+                      box.orientation = LinearLayout.VERTICAL
+                      box.setBackgroundColor(Color.parseColor("#F01B5E20"))
+                      box.setPadding(pad, pad, pad, pad)
+                      val t = TextView(this)
+                      t.text = msg
+                      t.textSize = 28f
+                      t.setTextColor(Color.WHITE)
+                      t.gravity = Gravity.CENTER
+                      t.setPadding(0, pad, 0, pad)
+                      box.addView(t)
+                      val b = Button(this)
+                      b.text = L.get(lang, "dismiss")
+                      b.setTextColor(Color.BLACK)
+                      b.setBackgroundColor(Color.WHITE)
+                      b.setOnClickListener { dismissAll() }
+                      box.addView(b)
+                      val lp = WindowManager.LayoutParams(
+                          WindowManager.LayoutParams.MATCH_PARENT,
+                          WindowManager.LayoutParams.WRAP_CONTENT,
+                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                              WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                          PixelFormat.TRANSLUCENT
+                      )
+                      lp.gravity = Gravity.TOP
+                      try {
+                          wm.addView(box, lp)
+                          overlay = box
+                      } catch (e: Exception) {
+                      }
+                      main.removeCallbacks(autoHide)
+                      main.postDelayed(autoHide, 180000)
+                  }
+              }
+
+              private fun removeOverlay() {
+                  val v = overlay ?: return
+                  try {
+                      val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                      wm.removeView(v)
+                  } catch (e: Exception) {
+                  }
+                  overlay = null
+              }
+
+              private fun dismissAll() {
+                  Voice.stop()
+                  main.post { removeOverlay() }
+                  val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                  nm.cancel(2)
               }
 
               override fun onDestroy() {
                   active = false
                   running = false
                   level = 0
+                  Voice.stop()
+                  removeOverlay()
                   try { wake?.release() } catch (e: Exception) {}
                   super.onDestroy()
               }
@@ -277,17 +561,24 @@ jobs:
           import android.content.Intent
           import android.content.pm.PackageManager
           import android.graphics.Color
+          import android.net.Uri
           import android.os.Build
           import android.os.Bundle
           import android.os.Handler
           import android.os.Looper
+          import android.provider.Settings
           import android.view.Gravity
+          import android.view.View
           import android.view.ViewGroup
+          import android.widget.AdapterView
+          import android.widget.ArrayAdapter
           import android.widget.Button
           import android.widget.LinearLayout
           import android.widget.ProgressBar
           import android.widget.ScrollView
           import android.widget.SeekBar
+          import android.widget.Spinner
+          import android.widget.Switch
           import android.widget.TextView
 
           class MainActivity : Activity() {
@@ -296,25 +587,33 @@ jobs:
               private lateinit var status: TextView
               private lateinit var thrText: TextView
               private lateinit var toggle: Button
+              private var lang = "en"
               private val handler = Handler(Looper.getMainLooper())
 
               private val tick = object : Runnable {
                   override fun run() {
                       meter.progress = CalmService.level
                       if (CalmService.running) {
-                          status.text = "چل رہی ہے  |  آواز کی سطح: " + CalmService.level
-                          toggle.text = "بند کریں"
+                          status.text = L.get(lang, "on") + CalmService.level
+                          toggle.text = L.get(lang, "stop")
                       } else {
-                          status.text = "ابھی بند ہے"
-                          toggle.text = "شروع کریں"
+                          status.text = L.get(lang, "off")
+                          toggle.text = L.get(lang, "start")
                       }
                       handler.postDelayed(this, 150)
                   }
               }
 
+              private fun thrLabel(v: Int): String {
+                  return L.get(lang, "thr") + v + "\n" + L.get(lang, "thrHint")
+              }
+
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
                   val prefs = getSharedPreferences("calm", MODE_PRIVATE)
+                  lang = prefs.getString("lang", "en") ?: "en"
+                  Voice.init(this)
+
                   val pad = (20 * resources.displayMetrics.density).toInt()
                   val wide = LinearLayout.LayoutParams(
                       ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
@@ -334,9 +633,25 @@ jobs:
                       return t
                   }
 
-                  root.addView(label("پرسکون رہنے والا ساتھی", 24f), wide)
+                  root.addView(label(L.get(lang, "title"), 24f), wide)
 
-                  status = label("ابھی بند ہے", 18f)
+                  root.addView(label(L.get(lang, "langLabel"), 14f), wide)
+                  val sp = Spinner(this)
+                  sp.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, L.names)
+                  sp.setSelection(L.codes.indexOf(lang))
+                  sp.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                      override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                          val c = L.codes[pos]
+                          if (c != lang) {
+                              prefs.edit().putString("lang", c).apply()
+                              recreate()
+                          }
+                      }
+                      override fun onNothingSelected(p: AdapterView<*>?) {}
+                  }
+                  root.addView(sp, wide)
+
+                  status = label(L.get(lang, "off"), 18f)
                   root.addView(status, wide)
 
                   meter = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal)
@@ -344,8 +659,7 @@ jobs:
                   root.addView(meter, wide)
 
                   val start = prefs.getInt("thr", 70)
-                  thrText = label("", 16f)
-                  thrText.text = "الارم کی حد: " + start + "\n(حد کم ہو تو یاد دہانی جلدی آئے گی)"
+                  thrText = label(thrLabel(start), 16f)
                   root.addView(thrText, wide)
 
                   val seek = SeekBar(this)
@@ -355,15 +669,24 @@ jobs:
                       override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
                           val v = p + 20
                           prefs.edit().putInt("thr", v).apply()
-                          thrText.text = "الارم کی حد: " + v + "\n(حد کم ہو تو یاد دہانی جلدی آئے گی)"
+                          thrText.text = thrLabel(v)
                       }
                       override fun onStartTrackingTouch(s: SeekBar?) {}
                       override fun onStopTrackingTouch(s: SeekBar?) {}
                   })
                   root.addView(seek, wide)
 
+                  val sw = Switch(this)
+                  sw.text = L.get(lang, "voiceSwitch")
+                  sw.setTextColor(Color.WHITE)
+                  sw.isChecked = prefs.getBoolean("voice", true)
+                  sw.setOnCheckedChangeListener { _, checked ->
+                      prefs.edit().putBoolean("voice", checked).apply()
+                  }
+                  root.addView(sw, wide)
+
                   toggle = Button(this)
-                  toggle.text = "شروع کریں"
+                  toggle.text = L.get(lang, "start")
                   toggle.setOnClickListener {
                       if (CalmService.running) {
                           stopService(Intent(this, CalmService::class.java))
@@ -373,19 +696,32 @@ jobs:
                   }
                   root.addView(toggle, wide)
 
+                  val vt = Button(this)
+                  vt.text = L.get(lang, "voiceTest")
+                  vt.setOnClickListener {
+                      Voice.init(this)
+                      Voice.speak(lang, L.get(lang, "m1"), L.get("en", "m1"))
+                  }
+                  root.addView(vt, wide)
+
                   val test = Button(this)
-                  test.text = "وائبریشن ٹیسٹ"
+                  test.text = L.get(lang, "vib")
                   test.setOnClickListener { CalmService.buzz(this) }
                   root.addView(test, wide)
 
-                  root.addView(
-                      label(
-                          "یہ ایپ آواز ریکارڈ نہیں کرتی، صرف بلندی ناپتی ہے۔\n" +
-                          "شروع کرنے کے بعد فون جیب میں رکھ سکتے ہیں۔\n" +
-                          "اگر کال کے دوران سطح 0 رہے تو کال سپیکر پر رکھ کر آزمائیں۔",
-                          14f
-                      ), wide
-                  )
+                  val ov = Button(this)
+                  ov.text = L.get(lang, "overlay")
+                  ov.setOnClickListener {
+                      startActivity(
+                          Intent(
+                              Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                              Uri.parse("package:" + packageName)
+                          )
+                      )
+                  }
+                  root.addView(ov, wide)
+
+                  root.addView(label(L.get(lang, "note"), 14f), wide)
 
                   val scroll = ScrollView(this)
                   scroll.setBackgroundColor(Color.parseColor("#101820"))
