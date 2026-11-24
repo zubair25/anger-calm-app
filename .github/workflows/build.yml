@@ -68,8 +68,8 @@ jobs:
                   applicationId 'com.zubair.calmapp'
                   minSdk 26
                   targetSdk 34
-                  versionCode 2
-                  versionName '2.0'
+                  versionCode 3
+                  versionName '3.0'
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -117,6 +117,7 @@ jobs:
           package com.zubair.calmapp
 
           import android.content.Context
+          import android.content.SharedPreferences
           import android.media.AudioAttributes
           import android.speech.tts.TextToSpeech
           import android.speech.tts.UtteranceProgressListener
@@ -140,6 +141,8 @@ jobs:
                       "voiceSwitch" to "Speak the reminder aloud",
                       "overlay" to "Allow pop-up over other apps",
                       "langLabel" to "Language",
+                      "customLabel" to "Your own reminder text (dua, dhikr, any words). Leave an empty line between different texts. Leave blank to use the default messages.",
+                      "clangLabel" to "Voice language for your own text",
                       "note" to "This app does not record audio. It only measures loudness.\nAfter starting you can lock the phone and keep it in your pocket.\nIf the level stays 0 during a call, put the call on speaker and test again.",
                       "dismiss" to "OK, I am calm - close",
                       "alertTitle" to "Take a moment",
@@ -163,6 +166,8 @@ jobs:
                       "voiceSwitch" to "یاد دہانی آواز میں بولے",
                       "overlay" to "دوسری ایپس کے اوپر پیغام کی اجازت دیں",
                       "langLabel" to "زبان",
+                      "customLabel" to "اپنا متن (دعا، ذکر یا کوئی بھی الفاظ)۔ الگ الگ متن کے درمیان ایک خالی لائن چھوڑیں۔ خالی رہنے دیں تو پہلے والے پیغامات استعمال ہوں گے۔",
+                      "clangLabel" to "اپنے متن کی آواز کی زبان",
                       "note" to "یہ ایپ آواز ریکارڈ نہیں کرتی، صرف بلندی ناپتی ہے۔\nشروع کرنے کے بعد فون جیب میں رکھ سکتے ہیں۔\nاگر کال کے دوران سطح 0 رہے تو کال سپیکر پر رکھ کر آزمائیں۔",
                       "dismiss" to "ٹھیک ہے، میں پرسکون ہوں - بند کریں",
                       "alertTitle" to "ایک لمحہ",
@@ -186,6 +191,8 @@ jobs:
                       "voiceSwitch" to "याद दिलाना बोलकर सुनाए",
                       "overlay" to "दूसरे ऐप्स के ऊपर संदेश की अनुमति दें",
                       "langLabel" to "भाषा",
+                      "customLabel" to "अपना टेक्स्ट (दुआ, ज़िक्र या कोई भी शब्द)। अलग-अलग टेक्स्ट के बीच एक खाली लाइन छोड़ें। खाली रहे तो डिफ़ॉल्ट संदेश आएँगे।",
+                      "clangLabel" to "अपने टेक्स्ट की आवाज़ की भाषा",
                       "note" to "यह ऐप आवाज़ रिकॉर्ड नहीं करता, सिर्फ़ तेज़ी नापता है।\nशुरू करने के बाद फ़ोन जेब में रख सकते हैं।\nअगर कॉल के दौरान स्तर 0 रहे तो कॉल स्पीकर पर रखकर आज़माएँ।",
                       "dismiss" to "ठीक है, मैं शांत हूँ - बंद करें",
                       "alertTitle" to "एक पल रुकिए",
@@ -209,6 +216,8 @@ jobs:
                       "voiceSwitch" to "قراءة التذكير بصوت عالٍ",
                       "overlay" to "السماح بالعرض فوق التطبيقات الأخرى",
                       "langLabel" to "اللغة",
+                      "customLabel" to "نصّك الخاص (دعاء أو ذكر أو أي كلمات). اترك سطرًا فارغًا بين النصوص المختلفة. اتركه فارغًا لاستخدام الرسائل الافتراضية.",
+                      "clangLabel" to "لغة الصوت لنصّك",
                       "note" to "لا يسجّل هذا التطبيق الصوت، بل يقيس شدّته فقط.\nبعد البدء يمكنك قفل الهاتف ووضعه في جيبك.\nإذا بقي المستوى 0 أثناء المكالمة فضع المكالمة على مكبّر الصوت وجرّب مجددًا.",
                       "dismiss" to "حسنًا، أنا هادئ - إغلاق",
                       "alertTitle" to "لحظة من فضلك",
@@ -225,6 +234,23 @@ jobs:
                   val en = data["en"]!!
                   val m = data[lang] ?: en
                   return m[key] ?: en[key] ?: key
+              }
+          }
+
+          object Pick {
+              private var idx = 0
+
+              fun next(prefs: SharedPreferences, lang: String): Triple<String, String, String> {
+                  val raw = prefs.getString("custom", "") ?: ""
+                  val parts = raw.trim().split(Regex("\\n\\s*\\n")).map { it.trim() }.filter { it.isNotEmpty() }
+                  if (parts.isNotEmpty()) {
+                      val text = parts[idx % parts.size]
+                      idx++
+                      val vl = prefs.getString("clang", lang) ?: lang
+                      return Triple(text, vl, "")
+                  }
+                  val key = arrayOf("m1", "m2", "m3", "m4").random()
+                  return Triple(L.get(lang, key), lang, L.get("en", key))
               }
           }
 
@@ -271,7 +297,9 @@ jobs:
                       t.setLanguage(Locale.ENGLISH)
                       say = fallbackEnglish
                   }
-                  t.speak(say, TextToSpeech.QUEUE_FLUSH, null, "calm")
+                  if (say.isBlank()) return
+                  t.setSpeechRate(0.9f)
+                  t.speak(say.take(3500), TextToSpeech.QUEUE_FLUSH, null, "calm")
               }
 
               fun stop() {
@@ -452,8 +480,8 @@ jobs:
               private fun alert() {
                   val prefs = getSharedPreferences("calm", Context.MODE_PRIVATE)
                   val lang = prefs.getString("lang", "en") ?: "en"
-                  val key = arrayOf("m1", "m2", "m3", "m4").random()
-                  val msg = L.get(lang, key)
+                  val picked = Pick.next(prefs, lang)
+                  val msg = picked.first
 
                   val pi = PendingIntent.getService(
                       this, 0,
@@ -477,7 +505,7 @@ jobs:
 
                   buzz(this)
                   if (prefs.getBoolean("voice", true)) {
-                      Voice.speak(lang, msg, L.get("en", key))
+                      Voice.speak(picked.second, msg, picked.third)
                   }
                   showOverlay(msg, lang)
               }
@@ -494,7 +522,7 @@ jobs:
                       box.setPadding(pad, pad, pad, pad)
                       val t = TextView(this)
                       t.text = msg
-                      t.textSize = 28f
+                      t.textSize = if (msg.length > 120) 18f else 28f
                       t.setTextColor(Color.WHITE)
                       t.gravity = Gravity.CENTER
                       t.setPadding(0, pad, 0, pad)
@@ -567,12 +595,16 @@ jobs:
           import android.os.Handler
           import android.os.Looper
           import android.provider.Settings
+          import android.text.Editable
+          import android.text.InputType
+          import android.text.TextWatcher
           import android.view.Gravity
           import android.view.View
           import android.view.ViewGroup
           import android.widget.AdapterView
           import android.widget.ArrayAdapter
           import android.widget.Button
+          import android.widget.EditText
           import android.widget.LinearLayout
           import android.widget.ProgressBar
           import android.widget.ScrollView
@@ -685,6 +717,37 @@ jobs:
                   }
                   root.addView(sw, wide)
 
+                  root.addView(label(L.get(lang, "customLabel"), 14f), wide)
+                  val et = EditText(this)
+                  et.setText(prefs.getString("custom", "") ?: "")
+                  et.setTextColor(Color.WHITE)
+                  et.minLines = 3
+                  et.gravity = Gravity.TOP
+                  et.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                  et.addTextChangedListener(object : TextWatcher {
+                      override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+                      override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
+                      override fun afterTextChanged(s: Editable?) {
+                          prefs.edit().putString("custom", s?.toString() ?: "").apply()
+                      }
+                  })
+                  root.addView(et, wide)
+
+                  root.addView(label(L.get(lang, "clangLabel"), 14f), wide)
+                  val sp2 = Spinner(this)
+                  sp2.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, L.names)
+                  sp2.setSelection(L.codes.indexOf(prefs.getString("clang", lang) ?: lang))
+                  sp2.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                      override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                          val c = L.codes[pos]
+                          if (c != (prefs.getString("clang", lang) ?: lang)) {
+                              prefs.edit().putString("clang", c).apply()
+                          }
+                      }
+                      override fun onNothingSelected(p: AdapterView<*>?) {}
+                  }
+                  root.addView(sp2, wide)
+
                   toggle = Button(this)
                   toggle.text = L.get(lang, "start")
                   toggle.setOnClickListener {
@@ -700,7 +763,8 @@ jobs:
                   vt.text = L.get(lang, "voiceTest")
                   vt.setOnClickListener {
                       Voice.init(this)
-                      Voice.speak(lang, L.get(lang, "m1"), L.get("en", "m1"))
+                      val pk = Pick.next(prefs, lang)
+                      Voice.speak(pk.second, pk.first, pk.third)
                   }
                   root.addView(vt, wide)
 
